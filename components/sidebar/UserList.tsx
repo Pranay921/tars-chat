@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
 import { api } from "@/convex/_generated/api";
@@ -13,10 +13,18 @@ import { cn } from "@/lib/utils";
 type RequestStatus = "idle" | "sending" | "sent" | "already_pending" | "already_exists";
 
 export default function UserList() {
-    const [search, setSearch] = useState("");
+    const [inputValue, setInputValue] = useState("");
+    const [debouncedSearch, setDebouncedSearch] = useState("");
     const [statusMap, setStatusMap] = useState<Record<string, RequestStatus>>({});
+    const inputRef = useRef<HTMLInputElement>(null);
 
-    const users = useQuery(api.users.listUsers, { search });
+    // Debounce: only update the Convex query arg 300ms after user stops typing
+    useEffect(() => {
+        const t = setTimeout(() => setDebouncedSearch(inputValue), 300);
+        return () => clearTimeout(t);
+    }, [inputValue]);
+
+    const users = useQuery(api.users.listUsers, { search: debouncedSearch });
     const presence = useQuery(api.presence.getAllPresence);
     const sendDMRequest = useMutation(api.requests.sendDMRequest);
 
@@ -69,15 +77,16 @@ export default function UserList() {
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[hsl(var(--muted-foreground))]" />
                     <input
+                        ref={inputRef}
                         type="text"
                         placeholder="Search users..."
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        value={inputValue}
+                        onChange={(e) => setInputValue(e.target.value)}
                         className="w-full bg-[hsl(var(--secondary))] text-white placeholder-[hsl(var(--muted-foreground))] rounded-xl pl-9 pr-9 py-2 text-sm border border-[hsl(var(--border))] focus:outline-none focus:border-purple-500 transition-colors"
                     />
-                    {search && (
+                    {inputValue && (
                         <button
-                            onClick={() => setSearch("")}
+                            onClick={() => { setInputValue(""); setDebouncedSearch(""); inputRef.current?.focus(); }}
                             className="absolute right-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))] hover:text-white transition-colors"
                         >
                             <X className="w-4 h-4" />
