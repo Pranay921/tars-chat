@@ -1,12 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { use } from "react";
-import { ArrowLeft, Users } from "lucide-react";
+import { ArrowLeft, Settings } from "lucide-react";
 import ChatWindow from "@/components/chat/ChatWindow";
+import GroupManagePanel from "@/components/chat/GroupManagePanel";
 import UserAvatar from "@/components/shared/UserAvatar";
 
 interface Props {
@@ -17,20 +19,13 @@ export default function ConversationPage({ params }: Props) {
     const { id } = use(params);
     const conversationId = id as Id<"conversations">;
     const router = useRouter();
+    const [showManage, setShowManage] = useState(false);
 
     const me = useQuery(api.users.getMe);
     const conversation = useQuery(api.conversations.getConversation, { conversationId });
     const presence = useQuery(api.presence.getAllPresence);
 
-    if (!me) {
-        return (
-            <div className="flex-1 flex items-center justify-center">
-                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-        );
-    }
-
-    if (!conversation) {
+    if (!me || !conversation) {
         return (
             <div className="flex-1 flex items-center justify-center">
                 <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
@@ -41,6 +36,7 @@ export default function ConversationPage({ params }: Props) {
     const otherUser = !conversation.isGroup ? (conversation.otherUsers as any[])[0] : null;
     const displayName = conversation.isGroup ? conversation.groupName : otherUser?.name ?? "Unknown";
     const displayImage = !conversation.isGroup ? otherUser?.imageUrl : undefined;
+    const memberCount = (conversation.otherUsers as any[]).length + 1;
 
     const online = (() => {
         if (!otherUser || !presence) return false;
@@ -49,10 +45,10 @@ export default function ConversationPage({ params }: Props) {
         return p?.isOnline && now - p.lastHeartbeat < 30000;
     })();
 
+    const isAdmin = (conversation as any).isAdmin === true;
+
     return (
         <>
-            {/* Mobile: show sidebar when no conversation selected — this page IS the conversation */}
-            {/* On mobile, show full-screen */}
             <div className="flex flex-col h-full w-full">
                 {/* Chat header */}
                 <div className="flex items-center gap-3 px-4 py-3 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] flex-shrink-0">
@@ -74,16 +70,22 @@ export default function ConversationPage({ params }: Props) {
                         <h2 className="text-sm font-semibold text-white truncate">{displayName}</h2>
                         <p className="text-xs text-[hsl(var(--muted-foreground))]">
                             {conversation.isGroup
-                                ? `${(conversation.otherUsers as any[]).length + 1} members`
+                                ? `${memberCount} members${isAdmin ? " · Admin" : ""}`
                                 : online
                                     ? "Online"
                                     : "Offline"}
                         </p>
                     </div>
+
+                    {/* Group manage button — visible to all group members, admin controls shown inside */}
                     {conversation.isGroup && (
-                        <div className="flex-shrink-0 text-[hsl(var(--muted-foreground))]">
-                            <Users className="w-4 h-4" />
-                        </div>
+                        <button
+                            onClick={() => setShowManage(true)}
+                            title={isAdmin ? "Manage group" : "View members"}
+                            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-xl text-[hsl(var(--muted-foreground))] hover:text-white hover:bg-white/10 transition-colors"
+                        >
+                            <Settings className="w-4 h-4" />
+                        </button>
                     )}
                 </div>
 
@@ -94,6 +96,15 @@ export default function ConversationPage({ params }: Props) {
                     isGroup={conversation.isGroup}
                 />
             </div>
+
+            {/* Group management modal */}
+            {showManage && conversation.isGroup && (
+                <GroupManagePanel
+                    conversationId={conversationId}
+                    isAdmin={isAdmin}
+                    onClose={() => setShowManage(false)}
+                />
+            )}
         </>
     );
 }

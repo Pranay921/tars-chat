@@ -16,6 +16,7 @@ export default defineSchema({
     groupImageUrl: v.optional(v.string()),
     lastMessageTime: v.optional(v.number()),
     lastMessageText: v.optional(v.string()),
+    adminId: v.optional(v.id("users")), // Group admin (creator)
   }),
 
   messages: defineTable({
@@ -49,4 +50,21 @@ export default defineSchema({
     isTypingIn: v.optional(v.id("conversations")),
     lastHeartbeat: v.number(),
   }).index("by_userId", ["userId"]),
+
+  // Friend/group requests
+  requests: defineTable({
+    fromUserId: v.id("users"),
+    toUserId: v.id("users"),
+    type: v.union(v.literal("dm"), v.literal("group")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined")
+    ),
+    groupName: v.optional(v.string()),
+    groupMemberIds: v.optional(v.array(v.id("users"))),
+    conversationId: v.optional(v.id("conversations")), // Set after first accepts; subsequent acceptors join this group
+  })
+    .index("by_toUser_status", ["toUserId", "status"])
+    .index("by_fromUser_toUser", ["fromUserId", "toUserId"]),
 });

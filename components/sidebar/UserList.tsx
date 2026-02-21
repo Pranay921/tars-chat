@@ -1,23 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { Id } from "@/convex/_generated/dataModel";
-import { Search, X } from "lucide-react";
+import { Search, X, UserPlus, Check } from "lucide-react";
 import UserAvatar from "@/components/shared/UserAvatar";
 import EmptyState from "@/components/shared/EmptyState";
 import { cn } from "@/lib/utils";
 
+type RequestStatus = "idle" | "sending" | "sent" | "already_pending" | "already_exists";
+
 export default function UserList() {
     const [search, setSearch] = useState("");
-    const router = useRouter();
+    const [statusMap, setStatusMap] = useState<Record<string, RequestStatus>>({});
 
     const users = useQuery(api.users.listUsers, { search });
     const presence = useQuery(api.presence.getAllPresence);
-    const getOrCreateDM = useMutation(api.conversations.getOrCreateDM);
+    const sendDMRequest = useMutation(api.requests.sendDMRequest);
 
     const getIsOnline = (userId: Id<"users">) => {
         const now = Date.now();
@@ -26,8 +27,23 @@ export default function UserList() {
     };
 
     const handleUserClick = async (userId: Id<"users">) => {
-        const conversationId = await getOrCreateDM({ otherUserId: userId });
-        router.push(`/conversations/${conversationId}`);
+        if (statusMap[userId] === "sending" || statusMap[userId] === "sent") return;
+        setStatusMap((prev) => ({ ...prev, [userId]: "sending" }));
+        try {
+            const result = await sendDMRequest({ toUserId: userId });
+            setStatusMap((prev) => ({ ...prev, [userId]: (result as RequestStatus) ?? "sent" }));
+        } catch {
+            setStatusMap((prev) => ({ ...prev, [userId]: "idle" }));
+        }
+    };
+
+    const getButtonState = (userId: string) => {
+        const s = statusMap[userId] ?? "idle";
+        if (s === "sent") return { label: "Request sent", icon: <Check className="w-4 h-4" />, disabled: true, cls: "text-green-400" };
+        if (s === "already_pending") return { label: "Pending", icon: <Check className="w-4 h-4" />, disabled: true, cls: "text-yellow-400" };
+        if (s === "already_exists") return { label: "Chat exists", icon: <Check className="w-4 h-4" />, disabled: true, cls: "text-purple-400" };
+        if (s === "sending") return { label: "Sending...", icon: <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />, disabled: true, cls: "text-[hsl(var(--muted-foreground))]" };
+        return { label: "Connect", icon: <UserPlus className="w-4 h-4" />, disabled: false, cls: "text-purple-400" };
     };
 
     if (!users) {
@@ -77,14 +93,11 @@ export default function UserList() {
                 ) : (
                     users.map((user) => {
                         const online = getIsOnline(user._id);
+                        const btn = getButtonState(user._id);
                         return (
-                            <button
+                            <div
                                 key={user._id}
-                                onClick={() => handleUserClick(user._id)}
-                                className={cn(
-                                    "w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-150",
-                                    "hover:bg-white/5 active:bg-white/10 text-left group"
-                                )}
+                                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all duration-150"
                             >
                                 <UserAvatar
                                     name={user.name}
@@ -102,7 +115,22 @@ export default function UserList() {
                                         )}
                                     </p>
                                 </div>
-                            </button>
+                                {/* Connect button */}
+                                <button
+                                    onClick={() => handleUserClick(user._id)}
+                                    disabled={btn.disabled}
+                                    title={btn.label}
+                                    className={cn(
+                                        "flex-shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                                        btn.disabled
+                                            ? "border-transparent bg-transparent cursor-default " + btn.cls
+                                            : "border-purple-500/30 bg-purple-600/10 text-purple-400 hover:bg-purple-600/20"
+                                    )}
+                                >
+                                    {btn.icon}
+                                    <span className="hidden sm:inline">{btn.label}</span>
+                                </button>
+                            </div>
                         );
                     })
                 )}
